@@ -31,21 +31,37 @@ Global $app_name = "Learning Test Automation Core Coverage"
 Global $ini_filename = @ScriptDir & "\" & $app_name & ".ini"
 Global $log_filepath = @ScriptDir & "\" & $app_name & ".log"
 Global $html, $markup, $storage_format
-Global $aResult, $iRows, $iColumns, $iRval, $run_name = "", $max_num_defects = 0, $max_num_days = 0, $version_name = ""
+Global $result, $aResult, $iRows, $iColumns, $iRval, $run_name = "", $max_num_defects = 0, $max_num_days = 0, $version_name = ""
+
+FileDelete($log_filepath)
+_FileWriteLog($log_filepath, "Start")
 
 ; Startup SQLite
 
 _SQLite_Startup()
 ConsoleWrite("_SQLite_LibVersion=" & _SQLite_LibVersion() & @CRLF)
+_FileWriteLog($log_filepath, "_SQLite_LibVersion=" & _SQLite_LibVersion())
 
-FileDelete(@ScriptDir & "\" & $app_name & ".sqlite")
-_SQLite_Open(@ScriptDir & "\" & $app_name & ".sqlite")
-_SQLite_Exec(-1, "PRAGMA synchronous = OFF;")		; this should speed up DB transactions
-_SQLite_Exec(-1, "CREATE TABLE ProjectVersion (Name);") ; CREATE a Table
-_SQLite_Exec(-1, "CREATE TABLE Epic (Key,Summary);") ; CREATE a Table
-_SQLite_Exec(-1, "CREATE TABLE Story (Key,Summary,EpicKey,ReqID,FixVersion,Status);") ; CREATE a Table
-_SQLite_Exec(-1, "CREATE TABLE SubTask (Key,Summary,Description,StoryKey,FixVersion,Status,EstimatedTime,TimeSpent,ProgressPercent,Environment);") ; CREATE a Table
+$result = FileDelete(@ScriptDir & "\" & $app_name & ".sqlite")
+if $result = 0 Then _FileWriteLog($log_filepath, @ScriptDir & "\" & $app_name & ".sqlite not deleted")
 
+$result = _SQLite_Open(@ScriptDir & "\" & $app_name & ".sqlite")
+if $result = 0 Then _FileWriteLog($log_filepath, "Failed to open " & @ScriptDir & "\" & $app_name & ".sqlite")
+
+$result = _SQLite_Exec(-1, "PRAGMA synchronous = OFF;")		; this should speed up DB transactions
+if $result <> $SQLITE_OK Then _FileWriteLog($log_filepath, "Failed to execute PRAGMA synchronous = OFF;")
+
+$result = _SQLite_Exec(-1, "CREATE TABLE ProjectVersion (Name);") ; CREATE a Table
+if $result <> $SQLITE_OK Then _FileWriteLog($log_filepath, "Failed to execute CREATE TABLE ProjectVersion (Name);")
+
+$result = _SQLite_Exec(-1, "CREATE TABLE Epic (Key,Summary);") ; CREATE a Table
+if $result <> $SQLITE_OK Then _FileWriteLog($log_filepath, "Failed to execute CREATE TABLE Epic (Key,Summary);")
+
+$result = _SQLite_Exec(-1, "CREATE TABLE Story (Key,Summary,EpicKey,ReqID,FixVersion,Status);") ; CREATE a Table
+if $result <> $SQLITE_OK Then _FileWriteLog($log_filepath, "Failed to execute CREATE TABLE Story (Key,Summary,EpicKey,ReqID,FixVersion,Status);")
+
+$result = _SQLite_Exec(-1, "CREATE TABLE SubTask (Key,Summary,Description,StoryKey,FixVersion,Status,EstimatedTime,TimeSpent,ProgressPercent,Environment);") ; CREATE a Table
+if $result <> $SQLITE_OK Then _FileWriteLog($log_filepath, "Failed to execute CREATE TABLE SubTask (Key,Summary,Description,StoryKey,FixVersion,Status,EstimatedTime,TimeSpent,ProgressPercent,Environment);")
 
 ; Startup Jira & TestRail
 
@@ -55,6 +71,7 @@ _JiraDomainSet("https://janisoncls.atlassian.net")
 
 _Toast_Set(0, -1, -1, -1, -1, -1, "", 100, 100)
 _Toast_Show(0, $app_name, "Login to Jira ...", -30, False, True)
+_FileWriteLog($log_filepath, "Login to Jira (1) ...")
 
 Local $jira_username = IniRead($ini_filename, "main", "username", "")
 Local $jira_encrypted_password = IniRead($ini_filename, "main", "password", "")
@@ -76,6 +93,7 @@ EndIf
 if stringlen($jira_decrypted_password) = 0 or StringInStr($jira_json, "<title>Unauthorized (401)</title>", 1) > 0 Then
 
 	_Toast_Show(0, $app_name, "Username or password incorrect or not set.                       " & @CRLF & "Set your Jira login below." & @CRLF & @CRLF & @CRLF & @CRLF & @CRLF, -9999, False, True)
+	_FileWriteLog($log_filepath, "Username or password incorrect or not set. Set your Jira login below.")
 	GUICtrlCreateLabel("Username:", 10, 70, 80, 20)
 	$username_input = GUICtrlCreateInput("", 80, 70, 200, 20)
 	GUICtrlCreateLabel("Password:", 10, 90, 80, 20)
@@ -92,8 +110,10 @@ if stringlen($jira_decrypted_password) = 0 or StringInStr($jira_json, "<title>Un
 			Local $tmp_password = GUICtrlRead($password_input)
 			ConsoleWrite('@@ Debug(' & @ScriptLineNumber & ') : $tmp_password = ' & $tmp_password & @CRLF & '>Error code: ' & @error & @CRLF) ;### Debug Console
 			_Toast_Show(0, $app_name, "Login to Jira ...", -30, False, True)
+			_FileWriteLog($log_filepath, "Login to Jira (2) ...")
 			_JiraLogin($tmp_username, $tmp_password)
 			_JiraGetCurrentUser()
+			_FileWriteLog($log_filepath, "$jira_json = " & $jira_json)
 
 			if StringInStr($jira_json, "<title>Unauthorized (401)</title>", 1) = 0 Then
 
@@ -116,12 +136,14 @@ EndIf
 if StringInStr($jira_json, "<title>Unauthorized (401)</title>", 1) > 0 Then
 
 	_Toast_Show(0, $app_name, "Username or password incorrect or not set." & @CRLF & "Exiting ...", -5, true, True)
+	_FileWriteLog($log_filepath, "Username or password incorrect or not set. Exiting ...")
 	Exit
 EndIf
 
 ; get all epics for the project
 
 _Toast_Show(0, $app_name, "get all epics for the project", -30, False, True)
+_FileWriteLog($log_filepath, "get all epics for the project")
 $issue = _JiraGetSearchResultKeysSummariesAndIssueTypeNames("summary,issuetype", "project = QA AND issuetype = Epic AND labels in (Core) AND labels in (Automation) AND labels in (Learning)")
 ;$issue = _JiraGetSearchResultKeysSummariesAndIssueTypeNames("", "project = QA AND issuetype = Epic AND labels in (Core) AND labels in (Automation)")
 
@@ -137,6 +159,7 @@ Next
 ; get all stories for the project
 
 _Toast_Show(0, $app_name, "get all stories for the project", -30, False, True)
+_FileWriteLog($log_filepath, "get all stories for the project")
 $issue = _JiraGetSearchResultKeysSummariesIssueTypeNameEpicKeyRequirements("summary,issuetype,customfield_10008,labels,fixVersions,status", "project = QA AND issuetype = Story AND labels in (Core) AND labels in (Automation) AND labels in (Learning)")
 
 for $i = 0 to (UBound($issue) - 1) Step 7
@@ -151,6 +174,7 @@ Next
 ; get all sub-tasks for the project
 
 _Toast_Show(0, $app_name, "get all sub-tasks for the project", -30, False, True)
+_FileWriteLog($log_filepath, "get all sub-tasks for the project")
 $issue = _JiraGetSearchResultKeysSummariesIssueTypeNameStoryKeyRequirements("summary,description,issuetype,parent,labels,fixVersions,status,aggregateprogress,environment", "project = QA AND issuetype = Sub-task AND labels in (Core) AND labels in (Automation) AND labels in (Learning)")
 
 for $i = 0 to (UBound($issue) - 1) Step 12
@@ -171,10 +195,25 @@ _JiraShutdown()
 ; select Epic.Summary as "Sub Category", Story.Summary as "Pages", SubTask.Summary as "Processes", case when SubTask.Status = 'Done' then 'Skip' when SubTask.Status = 'Waiting For Build' then 'Yes' when SubTask.Status = 'In Progress' or SubTask.Status = 'Beta Testing' or SubTask.Status = 'Ready' or SubTask.Status = 'Closed' or SubTask.Status = 'Cancelled' or SubTask.Status = 'Resolved' or SubTask.Status = 'Test Run' then 'Yes' else 'No' end as "Coverage", '' as "Percentage Completed", '' as "Platform Coverage", '' as "Notes" from Epic left join Story on Epic.Key = Story.EpicKey left join SubTask on Story.Key = SubTask.StoryKey
 
 _Toast_Show(0, $app_name, "creating report", -30, False, True)
+_FileWriteLog($log_filepath, "creating report")
 Create_HTML_Report(True)
-Local $html = FileRead(@ScriptDir & "\html_report.html")
+
+; Tidy the HTML report (for upload to Confluence)
+
+Local $iPID = Run("tidy.exe -config tidy_config.txt html_report.html", @ScriptDir, @SW_HIDE, $STDOUT_CHILD)
+ProcessWaitClose($iPID)
+Local $html = StdoutRead($iPID)
+
+; Escape quotes in html (to embed in Confluence json)
+$html = StringReplace($html, """", "\""")
+$html = StringReplace($html, "\\""", "\""")
+;FileDelete("html_report_tidy.html")
+;FileWrite("html_report_tidy.html", $html)
+
 _Toast_Show(0, $app_name, "uploading report to confluence", -30, False, True)
+_FileWriteLog($log_filepath, "uploading report to confluence")
 Update_Confluence_Page("https://janisoncls.atlassian.net", $jira_username, $jira_password, "JAST", "470483084", "470319432", "Learning Test Automation Core Coverage", $html)
+_FileWriteLog($log_filepath, "Done")
 
 
 
@@ -185,15 +224,8 @@ Update_Confluence_Page("https://janisoncls.atlassian.net", $jira_username, $jira
 Func SQLite_to_HTML_table($query, $th_classes, $td_classes, $empty_message, $run_id, $merged_cell_for_column_numbers, $confluence_html = False)
 
 	Local $double_quotes = """"
-
-	if $confluence_html = true Then
-
-		$double_quotes = "\"""
-	EndIf
-
 	Local $th_class = StringSplit($th_classes, ",", 2)
 	Local $td_class = StringSplit($td_classes, ",", 2)
-
 	Local $aResult, $iRows, $iColumns, $iRval, $run_name = ""
 
 ;	$xx = "SELECT RunName AS ""Run Name"" FROM report WHERE RunID = '" & $run_id & "';"
@@ -230,7 +262,7 @@ Func SQLite_to_HTML_table($query, $th_classes, $td_classes, $empty_message, $run
 
 			if $confluence_html = true Then
 
-				$html = $html &	"<font size=\""1\""><table class=\""wrapped fixed-table\"">" & @CRLF
+				$html = $html &	"<font size=""1""><table class=""wrapped fixed-table"">" & @CRLF
 ;				$html = $html &	"<table>" & @CRLF
 			Else
 
@@ -294,16 +326,12 @@ Func SQLite_to_HTML_table($query, $th_classes, $td_classes, $empty_message, $run
 
 						$html_text = StringReplace($html_text, @CRLF, "<br/>")
 						$html_text = StringReplace($html_text, @LF, "<br/>")
-						$html_text = StringRegExpReplace($html_text, "(?U)\*(.*)\*", "<b>$1</b>")
-						$html_text = StringRegExpReplace($html_text, "(?U)\[(.*)\|(.*)\]", "<a href=""$2"" target=""_blank"">$1</a>")
+;						$html_text = StringRegExpReplace($html_text, "(?U)\*(.*)\*", "<b>$1</b>")
+;						$html_text = StringRegExpReplace($html_text, "(?U)\[(.*)\|(.*)\]", "<a href=""$2"" target=""_blank"">$1</a>")
 
-;						$html_text = StringReplace($html_text, " \</td>", " \\</td>")
-						$html_text = StringRegExpReplace($html_text, "([^\\])\\$", "$1\\\\")
-;						$a = StringRegExpReplace($a, "([^\\])\\$", "$1\\\\")
-						$html_text = StringReplace($html_text, "<br>", "<br/>")
-						$html_text = StringReplace($html_text, "&", "&amp;")
-						$html_text = StringReplace($html_text, """", "\""")
-						$html_text = StringReplace($html_text, "\\""", "\""")
+						$html_text = StringReplace($html_text, "*Covered*", "<b>Covered</b>")
+						$html_text = StringReplace($html_text, "*Not Covered*", "<b>Not Covered</b>")
+						$html_text = StringReplace($html_text, "*Scripts*", "<b>Scripts</b>")
 
 						; determine if this should be a rowspan
 
@@ -326,7 +354,7 @@ Func SQLite_to_HTML_table($query, $th_classes, $td_classes, $empty_message, $run
 
 								$num_rowspans = $num_rowspans + 1
 ;								$rowspan_html = " rowspan=""" & $num_rowspans & """"
-								$html = $html & "<td rowspan=\""" & $num_rowspans & "\"">" & $html_text & "</td>" & @CRLF
+								$html = $html & "<td rowspan=""" & $num_rowspans & """>" & $html_text & "</td>" & @CRLF
 								$rowspan_rows_remaining_for_column[$j] = $num_rowspans
 							EndIf
 						EndIf
@@ -400,7 +428,7 @@ Func Create_HTML_Report($confluence_html = False)
 							"<body>" & @CRLF
 	EndIf
 
-	$html = $html & 		"<br /><a href=\""https://janisoncls.atlassian.net/secure/RapidBoard.jspa?projectKey=QA&amp;rapidView=157\"">Click to open the Automation Core Kanban Board</a><br /><br />" & @CRLF
+	$html = $html & 		"<br/><a href=""https://janisoncls.atlassian.net/secure/RapidBoard.jspa?projectKey=QA&amp;rapidView=157"">Click to open the Automation Core Kanban Board</a><br/><br/>" & @CRLF
 
 	Local $num_coverage = 0
 	Local $num_coverage_skipped = 0
@@ -435,12 +463,12 @@ Func Create_HTML_Report($confluence_html = False)
 		$num_coverage_no = $num_coverage - $num_coverage_yes
 		$pcnt_coverage_yes = Int(($num_coverage_yes / $num_coverage) * 100)
 
-		$html = $html & 	"Percent Covered = " & $pcnt_coverage_yes & "%<br />Total Covered = " & $num_coverage_yes & "<br />Total Not Covered = " & $num_coverage_no & "<br />Total Skipped = " & $num_coverage_skipped & "<br />Total = " & $num_coverage & "<br /><br />" & @CRLF
+		$html = $html & 	"Percent Covered = " & $pcnt_coverage_yes & "%<br/>Total Covered = " & $num_coverage_yes & "<br/>Total Not Covered = " & $num_coverage_no & "<br/>Total Skipped = " & $num_coverage_skipped & "<br/>Total = " & $num_coverage & "<br/><br/>" & @CRLF
 
 		SQLite_to_HTML_table("select '<a href=""https://janisoncls.atlassian.net/browse/' || Epic.Key || '"" target=""_blank"">' || Epic.Summary || '</a>' as ""Sub Category"", '<a href=""https://janisoncls.atlassian.net/browse/' || Story.Key || '"" target=""_blank"">' || Story.Summary || '</a>' as ""Pages"", '<a href=""https://janisoncls.atlassian.net/browse/' || SubTask.Key || '"" target=""_blank"">' || SubTask.Summary || '</a>' as ""Processes"", case when SubTask.Status = 'Done' then 'Skip' when SubTask.Status = 'Waiting For Build' then 'Yes' when SubTask.Status = 'In Progress' or SubTask.Status = 'Beta Testing' or SubTask.Status = 'Ready' or SubTask.Status = 'Closed' or SubTask.Status = 'Cancelled' or SubTask.Status = 'Resolved' or SubTask.Status = 'Test Run' then 'Yes' else 'No' end as ""Coverage"", case when length(SubTask.ProgressPercent) > 0 then SubTask.ProgressPercent || '%' else '' end as ""Percentage Completed"", SubTask.Environment as ""Platform Coverage"", SubTask.Description as ""Notes"" from Epic left join Story on Epic.Key = Story.EpicKey left join SubTask on Story.Key = SubTask.StoryKey order by Epic.Summary, Story.Summary, SubTask.Summary;", "150,200,200,50,60,100,500", "ts,tc,tc,ts,tc,tc,tc", "", "", "1,1,0,0,0,0,0", $confluence_html)
 	EndIf
 
-	$html = $html & 		"<br /><br /><a href=\""https://github.com/seanhaydongriffin/Learning-Test-Automation-Core-Coverage/releases/download/v0.1/Learning.Test.Automation.Core.Coverage.portable.exe\"">Click to update this page</a>" & @CRLF
+	$html = $html & 		"<br/><br/><a href=""https://github.com/seanhaydongriffin/Learning-Test-Automation-Core-Coverage/releases/download/v0.1/Learning.Test.Automation.Core.Coverage.portable.exe"">Click to update this page</a>" & @CRLF
 
 	if $confluence_html = False Then
 

@@ -1,0 +1,6 @@
+doctype: omit
+show-body-only: true
+quote-ampersand: true
+output-xhtml: true
+quiet: true
+wrap: 0

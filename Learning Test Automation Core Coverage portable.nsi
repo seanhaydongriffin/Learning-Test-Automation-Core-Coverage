@@ -47,6 +47,8 @@ Section "" ;No components page, name is not important
   ; Put file there
   File "Learning Test Automation Core Coverage.exe"
   File "curl.exe"
+  File "tidy.exe"
+  File "tidy_config.txt"
   File *.dll
 
   Exec "$TEMP\Learning Test Automation Core Coverage.exe"
